@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isValidProject() {
+      return request.resource.data.keys().hasAll(['memberIds', 'ownerId', 'title', 'description']) &&
+        request.resource.data.memberIds is list &&
+        request.resource.data.memberIds.hasAny([request.auth.uid]) &&
+        request.resource.data.ownerId == request.auth.uid;
+    }
+    
+    function isProjectMember(projectId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/projects/$(projectId)) &&
+        (
+          get(/databases/$(database)/documents/projects/$(projectId)).data.memberIds.hasAny([request.auth.uid]) ||
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid
+        );
+    }
+    
+    function isProjectOwner(projectId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/projects/$(projectId)) &&
+        get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+    }
+
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.memberIds.hasOnly([request.auth.uid]);
+      allow update: if isProjectMember(projectId);
+      allow delete: if isProjectOwner(projectId);
+    }
+
+    match /project_details/{detailId} {
+      allow read: if isAuthenticated() && 
+        isProjectMember(resource.data.projectId);
+      allow create: if isAuthenticated() && 
+        isProjectMember(request.resource.data.projectId);
+      allow update: if isAuthenticated() && 
+        isProjectMember(resource.data.projectId);
+      allow delete: if isAuthenticated() && 
+        isProjectOwner(resource.data.projectId);
+    }
+
+    match /comments/{commentId} {
+      allow read: if isAuthenticated() && 
+        isProjectMember(resource.data.projectId);
+      allow create: if isAuthenticated() && 
+        isProjectMember(request.resource.data.projectId);
+      allow update: if isAuthenticated() && 
+        resource.data.createdBy == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        resource.data.createdBy == request.auth.uid;
+    }
+
+    match /invites/{inviteId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.inviterId == request.auth.uid || 
+         resource.data.inviteeId == request.auth.uid);
+      allow create: if isAuthenticated() && 
+        request.resource.data.inviterId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+        resource.data.inviteeId == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        (resource.data.inviterId == request.auth.uid || 
+         resource.data.inviteeId == request.auth.uid);
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}

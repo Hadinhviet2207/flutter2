@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "535647367985",
+    "project_id": "planera-9477d",
+    "storage_bucket": "planera-9477d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:535647367985:android:161f7cf8e5d5ea6a8fb610",
+        "android_client_info": {
+          "package_name": "com.example.final_project_flutter_advanced_nhom_4"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5luX3w20aEArfzWc7_3_waWaWE903CCI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
