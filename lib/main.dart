@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:final_project_flutter_advanced_nhom_4/screens/btl_login.dart';
 import 'package:final_project_flutter_advanced_nhom_4/services/auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // THÊM
 import 'config/firebase_config.dart';
 
 void main() async {
@@ -54,20 +55,28 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _checkAndSignIn() async {
     try {
-      // Đảm bảo user được duy trì lâu dài
       await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
     } catch (e) {
       print('Lỗi setPersistence: $e');
     }
 
-    if (_authService.currentUser == null) {
+    final prefs = await SharedPreferences.getInstance();
+    final hasRealAccount = prefs.getBool('hasRealAccount') ?? false;
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null && !hasRealAccount) {
       try {
-        print('Chưa có user, đang đăng nhập ẩn danh...');
+        print(
+          'Chưa có user và chưa từng liên kết tài khoản → đăng nhập ẩn danh...',
+        );
         await _authService.signInAnonymously();
         print('Đăng nhập ẩn danh thành công!');
       } catch (e) {
         print('Lỗi đăng nhập ẩn danh: $e');
       }
+    } else if (currentUser == null && hasRealAccount) {
+      print('User đã từng liên kết tài khoản → không đăng nhập ẩn danh nữa.');
     }
 
     setState(() {
@@ -85,10 +94,8 @@ class _MyAppState extends State<MyApp> {
 
     return MaterialApp(
       title: 'Ứng dụng quản lý công việc',
-      debugShowCheckedModeBanner: false, // Ẩn banner debug
-      theme: ThemeData(
-        scaffoldBackgroundColor: Colors.white, // Đặt background màu trắng
-      ),
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(scaffoldBackgroundColor: Colors.white),
       home: StreamBuilder<User?>(
         stream: _authService.authStateChanges,
         builder: (context, snapshot) {

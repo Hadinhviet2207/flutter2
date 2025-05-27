@@ -76,7 +76,7 @@ class Project extends Equatable {
     assert(title.isNotEmpty, 'Project title cannot be empty');
     assert(
       createdAt.isBefore(updatedAt) || createdAt.isAtSameMomentAs(updatedAt),
-      'UpdatedAt must be after or equal to createdAt',
+      'updatedAt must be after or equal to createdAt',
     );
     assert(
       ownerId == null || ownerId!.isNotEmpty,
@@ -105,7 +105,8 @@ class Project extends Equatable {
       isDeleted: json['isDeleted'] as bool? ?? false,
       parentId: json['parentId'] as String?,
       status: ProjectStatus.values.firstWhere(
-        (e) => e.toString().split('.').last == json['status'],
+        (e) =>
+            e.toString().split('.').last == (json['status'] as String? ?? ''),
         orElse: () => ProjectStatus.notStarted,
       ),
       startDate: DateTime.parse(json['startDate'] as String),

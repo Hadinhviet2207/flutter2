@@ -340,11 +340,14 @@ class _AuthCardState extends State<AuthCard> {
 
 class ForgotPasswordScreen extends StatelessWidget {
   ForgotPasswordScreen({super.key});
+
   final emailController = TextEditingController();
+  final AuthService _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Khôi phục mật khẩu'),
@@ -362,6 +365,7 @@ class ForgotPasswordScreen extends StatelessWidget {
             const SizedBox(height: 24),
             TextField(
               controller: emailController,
+              keyboardType: TextInputType.emailAddress,
               decoration: const InputDecoration(
                 labelText: 'Email',
                 prefixIcon: Icon(Icons.email_outlined),
@@ -379,11 +383,31 @@ class ForgotPasswordScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đã gửi yêu cầu khôi phục!')),
-                  );
-                  Navigator.pop(context);
+                onPressed: () async {
+                  final email = emailController.text.trim();
+
+                  if (email.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Vui lòng nhập email')),
+                    );
+                    return;
+                  }
+
+                  try {
+                    await _authService.sendPasswordResetEmail(email);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Đã gửi email hướng dẫn khôi phục mật khẩu. Check hộp thư nhé!',
+                        ),
+                      ),
+                    );
+                    Navigator.pop(context);
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Lỗi gửi yêu cầu: $e')),
+                    );
+                  }
                 },
                 child: const Text('Gửi yêu cầu'),
               ),

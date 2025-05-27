@@ -1,4 +1,9 @@
+import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:final_project_flutter_advanced_nhom_4/screens/EditProfileScreen.dart';
 import 'package:final_project_flutter_advanced_nhom_4/screens/btl_login.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,6 +17,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  String? displayNameFromFirestore;
   User? user;
 
   String? photoURL;
@@ -26,98 +32,315 @@ class _ProfileScreenState extends State<ProfileScreen> {
     user = _auth.currentUser;
     photoURL = user?.photoURL;
     email = user?.email;
+    getUserData();
+  }
+
+  Future<void> getUserData() async {
+    final uid = user?.uid;
+    if (uid != null) {
+      final docSnapshot =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+
+      if (docSnapshot.exists) {
+        final data = docSnapshot.data();
+        setState(() {
+          displayNameFromFirestore = data?['displayName'] ?? 'Người dùng';
+        });
+      }
+    }
   }
 
   Future<void> _uploadImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile == null) return;
-
-    setState(() => isLoading = true);
-
-    final newPhotoURL = pickedFile.path; // Chưa upload lên Firebase Storage
     try {
-      await user?.updatePhotoURL(newPhotoURL);
-      await user?.reload();
-      user = _auth.currentUser;
+      final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile == null) {
+        print('Không chọn ảnh, thoát hàm');
+        return;
+      }
+
       setState(() {
-        photoURL = user?.photoURL;
+        isLoading = true;
+      });
+
+      final bytes = await pickedFile.readAsBytes();
+
+      final fileName =
+          'avatars/${user!.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final storageRef = FirebaseStorage.instance.ref().child(fileName);
+
+      print('Bắt đầu upload ảnh lên Storage...');
+      final uploadTask = await storageRef.putData(
+        bytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+
+      print('Upload xong, lấy URL...');
+      final downloadUrl = await storageRef.getDownloadURL();
+
+      print('Update photoURL cho user...');
+      await user!.updatePhotoURL(downloadUrl);
+      await user!.reload();
+      user = _auth.currentUser;
+
+      setState(() {
+        photoURL = downloadUrl;
         isLoading = false;
       });
+
+      print('Cập nhật ảnh đại diện thành công! URL: $downloadUrl');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cập nhật ảnh đại diện thành công!')),
       );
-    } catch (e) {
-      setState(() => isLoading = false);
+    } catch (e, stack) {
+      print('Lỗi khi upload ảnh: $e');
+      print(stack);
+
+      setState(() {
+        isLoading = false;
+      });
+
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Lỗi cập nhật ảnh: $e')));
+      ).showSnackBar(SnackBar(content: Text('Lỗi khi upload ảnh: $e')));
     }
   }
 
   Future<void> _changePassword() async {
-    final TextEditingController _passwordController = TextEditingController();
+    final TextEditingController currentPasswordController =
+        TextEditingController();
+    final TextEditingController newPasswordController = TextEditingController();
+    final TextEditingController confirmPasswordController =
+        TextEditingController();
 
-    if (user == null || user!.email == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bạn không thể đổi mật khẩu với tài khoản ẩn danh.'),
-        ),
-      );
-      return;
-    }
+    bool isObscureCurrent = true;
+    bool isObscureNew = true;
+    bool isObscureConfirm = true;
 
-    showDialog(
+    await showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Đổi mật khẩu'),
-            content: TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Mật khẩu mới',
-                hintText: 'Nhập mật khẩu mới (ít nhất 6 ký tự)',
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Hủy'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final newPassword = _passwordController.text.trim();
-                  if (newPassword.length < 6) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Mật khẩu phải ít nhất 6 ký tự'),
-                      ),
-                    );
-                    return;
-                  }
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Widget _buildPasswordField({
+              required TextEditingController controller,
+              required String label,
+              required bool isObscure,
+              required VoidCallback onToggle,
+            }) {
+              return TextField(
+                controller: controller,
+                obscureText: isObscure,
+                style: const TextStyle(fontSize: 18),
+                decoration: InputDecoration(
+                  labelText: label,
+                  labelStyle: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 16,
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 18,
+                    horizontal: 20,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      isObscure ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.grey[600],
+                    ),
+                    onPressed: onToggle,
+                  ),
+                ),
+              );
+            }
 
-                  try {
-                    await user!.updatePassword(newPassword);
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Đổi mật khẩu thành công!')),
-                    );
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Lỗi đổi mật khẩu: $e')),
-                    );
-                  }
-                },
-                child: const Text('Xác nhận'),
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
               ),
-            ],
-          ),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 24,
+              ),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 480),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 28,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Đổi mật khẩu',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 28,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      _buildPasswordField(
+                        controller: currentPasswordController,
+                        label: 'Mật khẩu hiện tại',
+                        isObscure: isObscureCurrent,
+                        onToggle:
+                            () => setState(
+                              () => isObscureCurrent = !isObscureCurrent,
+                            ),
+                      ),
+                      const SizedBox(height: 22),
+                      _buildPasswordField(
+                        controller: newPasswordController,
+                        label: 'Mật khẩu mới',
+                        isObscure: isObscureNew,
+                        onToggle:
+                            () => setState(() => isObscureNew = !isObscureNew),
+                      ),
+                      const SizedBox(height: 22),
+                      _buildPasswordField(
+                        controller: confirmPasswordController,
+                        label: 'Xác nhận mật khẩu mới',
+                        isObscure: isObscureConfirm,
+                        onToggle:
+                            () => setState(
+                              () => isObscureConfirm = !isObscureConfirm,
+                            ),
+                      ),
+                      const SizedBox(height: 36),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.grey[600],
+                              textStyle: const TextStyle(fontSize: 18),
+                            ),
+                            child: const Text('Hủy'),
+                          ),
+                          const SizedBox(width: 20),
+                          SizedBox(
+                            height: 40,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(
+                                  0xFF1565C0,
+                                ), // xanh đậm chuyên nghiệp
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 36,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                elevation: 6,
+                                shadowColor: Colors.blueAccent.withOpacity(0.5),
+                                textStyle: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              onPressed: () async {
+                                final currentPass =
+                                    currentPasswordController.text.trim();
+                                final newPass =
+                                    newPasswordController.text.trim();
+                                final confirmPass =
+                                    confirmPasswordController.text.trim();
+
+                                if (currentPass.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Vui lòng nhập mật khẩu hiện tại',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                if (newPass.length < 6) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Mật khẩu mới phải ít nhất 6 ký tự',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                if (newPass != confirmPass) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Xác nhận mật khẩu không khớp',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                try {
+                                  final cred = EmailAuthProvider.credential(
+                                    email: user!.email!,
+                                    password: currentPass,
+                                  );
+                                  await user!.reauthenticateWithCredential(
+                                    cred,
+                                  );
+
+                                  await user!.updatePassword(newPass);
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Đổi mật khẩu thành công!'),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Lỗi: $e')),
+                                  );
+                                }
+                              },
+                              child: const Text(
+                                'Lưu',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  shadows: [
+                                    Shadow(
+                                      offset: Offset(0, 1),
+                                      blurRadius: 3,
+                                      color: Colors.black26,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final displayName = user?.displayName ?? 'Người dùng';
+    final displayName = displayNameFromFirestore ?? 'Người dùng';
 
     final avatar = GestureDetector(
       onTap: _uploadImage,
@@ -212,76 +435,102 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: _changePassword,
                   ),
                   const Divider(height: 0),
-                  ListTile(
-                    leading: const Icon(Icons.link, color: Colors.blue),
-                    title: const Text('Liên kết tài khoản'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => AuthApp()),
-                      );
-                    },
-                  ),
+                  user != null && user!.isAnonymous
+                      ? ListTile(
+                        leading: const Icon(
+                          Icons.link,
+                          color: Colors.blueAccent,
+                        ),
+                        title: const Text('Liên kết tài khoản'),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => AuthApp()),
+                          );
+                        },
+                      )
+                      : ListTile(
+                        leading: const Icon(Icons.edit, color: Colors.green),
+                        title: const Text('Chỉnh sửa thông tin cá nhân'),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => EditProfileScreen(),
+                            ),
+                          );
+                        },
+                      ),
                 ],
               ),
             ),
-
             const SizedBox(height: 32),
-
-            // Nút Đăng xuất ở cuối màn hình
-            Align(
-              alignment: Alignment.center,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Đăng xuất'),
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor: Colors.red,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+            if (user?.isAnonymous == false)
+              Align(
+                alignment: Alignment.center,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Đăng xuất'),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        backgroundColor: Colors.red,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder:
-                            (context) => AlertDialog(
-                              title: const Text('Xác nhận đăng xuất'),
-                              content: const Text(
-                                'Bạn có chắc chắn muốn đăng xuất không?',
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder:
+                              (context) => AlertDialog(
+                                title: const Text('Xác nhận đăng xuất'),
+                                content: const Text(
+                                  'Bạn có chắc chắn muốn đăng xuất không?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.pop(context, false),
+                                    child: const Text('Hủy'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed:
+                                        () => Navigator.pop(context, true),
+                                    child: const Text('Đăng xuất'),
+                                  ),
+                                ],
                               ),
-                              actions: [
-                                TextButton(
-                                  onPressed:
-                                      () => Navigator.pop(context, false),
-                                  child: const Text('Hủy'),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Đăng xuất'),
-                                ),
-                              ],
-                            ),
-                      );
+                        );
 
-                      if (confirm == true) {
-                        await _auth.signOut();
-                        if (context.mounted) {
-                          Navigator.of(context).pushReplacementNamed('/login');
+                        if (confirm == true) {
+                          try {
+                            await _auth.signOut();
+                            if (context.mounted) {
+                              Navigator.of(context).pushReplacement(
+                                MaterialPageRoute(
+                                  builder: (context) => AuthApp(),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Đăng xuất thất bại: $e')),
+                            );
+                          }
                         }
-                      }
-                    },
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
 
             const SizedBox(height: 30),
             if (isLoading) const Center(child: CircularProgressIndicator()),

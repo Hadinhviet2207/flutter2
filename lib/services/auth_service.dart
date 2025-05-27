@@ -35,6 +35,7 @@ class AuthService {
         'id': userCredential.user!.uid,
         'email': null,
         'photoURL': null,
+        'displayName': 'Người dùng ẩn danh',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'isAnonymous': true,
@@ -86,6 +87,7 @@ class AuthService {
         'id': userCredential.user!.uid,
         'email': email,
         'photoURL': null,
+        'displayName': 'User ${userCredential.user!.uid}',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'isAnonymous': false,
@@ -212,6 +214,16 @@ class AuthService {
       }
     } catch (e) {
       print('Lỗi tạo/cập nhật user doc: $e');
+    }
+  }
+
+  // Gửi email lấy lại mật khẩu
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+    } catch (e) {
+      print('Lỗi gửi email quên mật khẩu: $e');
+      rethrow;
     }
   }
 
