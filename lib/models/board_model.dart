@@ -66,4 +66,31 @@ class BoardModel {
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }
+
+  // Hàm copyWith để tạo bản mới với vài trường được chỉnh sửa
+  BoardModel copyWith({
+    String? id,
+    String? title,
+    String? description,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? status,
+    bool? isStartingSoon,
+    String? userId,
+    bool? isPinned,
+    DateTime? createdAt,
+  }) {
+    return BoardModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      status: status ?? this.status,
+      isStartingSoon: isStartingSoon ?? this.isStartingSoon,
+      userId: userId ?? this.userId,
+      isPinned: isPinned ?? this.isPinned,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }
