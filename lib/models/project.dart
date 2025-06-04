@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum ProjectStatus {
   notStarted, // Chưa bắt đầu
@@ -29,6 +30,7 @@ class Project extends Equatable {
   final bool isPinned;
   final bool isGlobalPinned;
   final DateTime? pinnedAt;
+  final String teamLeaderId;
 
   Project({
     required this.id,
@@ -47,6 +49,7 @@ class Project extends Equatable {
     this.isPinned = false,
     this.isGlobalPinned = false,
     this.pinnedAt,
+    required this.teamLeaderId,
   }) {
     validate();
   }
@@ -69,6 +72,7 @@ class Project extends Equatable {
     isPinned,
     isGlobalPinned,
     pinnedAt,
+    teamLeaderId,
   ];
 
   void validate() {
@@ -76,7 +80,7 @@ class Project extends Equatable {
     assert(title.isNotEmpty, 'Project title cannot be empty');
     assert(
       createdAt.isBefore(updatedAt) || createdAt.isAtSameMomentAs(updatedAt),
-      'updatedAt must be after or equal to createdAt',
+      'UpdatedAt must be after or equal to createdAt',
     );
     assert(
       ownerId == null || ownerId!.isNotEmpty,
@@ -89,6 +93,11 @@ class Project extends Equatable {
     assert(
       parentId == null || parentId!.isNotEmpty,
       'Parent ID must be null or non-empty',
+    );
+    assert(teamLeaderId.isNotEmpty, 'Team Leader ID cannot be empty');
+    assert(
+      memberIds.contains(teamLeaderId),
+      'Team Leader must be a member of the project',
     );
   }
 
@@ -105,8 +114,7 @@ class Project extends Equatable {
       isDeleted: json['isDeleted'] as bool? ?? false,
       parentId: json['parentId'] as String?,
       status: ProjectStatus.values.firstWhere(
-        (e) =>
-            e.toString().split('.').last == (json['status'] as String? ?? ''),
+        (e) => e.toString().split('.').last == json['status'],
         orElse: () => ProjectStatus.notStarted,
       ),
       startDate: DateTime.parse(json['startDate'] as String),
@@ -120,6 +128,7 @@ class Project extends Equatable {
           json['pinnedAt'] != null
               ? DateTime.parse(json['pinnedAt'] as String)
               : null,
+      teamLeaderId: json['teamLeaderId'] as String,
     );
   }
 
@@ -141,6 +150,7 @@ class Project extends Equatable {
       'isPinned': isPinned,
       'isGlobalPinned': isGlobalPinned,
       'pinnedAt': pinnedAt?.toIso8601String(),
+      'teamLeaderId': teamLeaderId,
     };
   }
 
@@ -161,6 +171,7 @@ class Project extends Equatable {
     bool? isPinned,
     bool? isGlobalPinned,
     DateTime? pinnedAt,
+    String? teamLeaderId,
   }) {
     return Project(
       id: id ?? this.id,
@@ -179,6 +190,7 @@ class Project extends Equatable {
       isPinned: isPinned ?? this.isPinned,
       isGlobalPinned: isGlobalPinned ?? this.isGlobalPinned,
       pinnedAt: pinnedAt ?? this.pinnedAt,
+      teamLeaderId: teamLeaderId ?? this.teamLeaderId,
     );
   }
 }

@@ -22,10 +22,9 @@ class ProjectService {
         .where('memberIds', arrayContains: currentUser.uid)
         .where('parentId', isNull: true)
         .where('isArchived', isEqualTo: false)
-        .orderBy('isGlobalPinned', descending: true)
-        .orderBy('isPinned', descending: true)
-        .orderBy('pinnedAt', descending: true)
+        .where('isDeleted', isEqualTo: false)
         .orderBy('createdAt', descending: true)
+        .limit(50)
         .snapshots()
         .map(
           (snapshot) =>
@@ -43,10 +42,9 @@ class ProjectService {
         .where('parentId', isEqualTo: parentId)
         .where('memberIds', arrayContains: currentUser.uid)
         .where('isArchived', isEqualTo: false)
-        .orderBy('isGlobalPinned', descending: true)
-        .orderBy('isPinned', descending: true)
-        .orderBy('pinnedAt', descending: true)
+        .where('isDeleted', isEqualTo: false)
         .orderBy('createdAt', descending: true)
+        .limit(50)
         .snapshots()
         .map(
           (snapshot) =>
@@ -201,5 +199,11 @@ class ProjectService {
       'dueDate': dueDate.toIso8601String(),
       'updatedAt': DateTime.now().toIso8601String(),
     });
+  }
+
+  Future<Project?> getProject(String projectId) async {
+    final doc = await _firestore.collection(_collection).doc(projectId).get();
+    if (!doc.exists) return null;
+    return Project.fromJson(doc.data()!);
   }
 }

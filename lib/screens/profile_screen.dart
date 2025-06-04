@@ -1,12 +1,12 @@
-import 'dart:io';
-
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:final_project_flutter_advanced_nhom_4/screens/EditProfileScreen.dart';
-import 'package:final_project_flutter_advanced_nhom_4/screens/btl_login.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloudinary_public/cloudinary_public.dart';
+import 'package:final_project_flutter_advanced_nhom_4/screens/login_screen.dart';
+import 'package:final_project_flutter_advanced_nhom_4/screens/edit_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -17,13 +17,16 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final CloudinaryPublic cloudinary = CloudinaryPublic(
+    'dua5bpeht',
+    'planera',
+    cache: false,
+  );
   String? displayNameFromFirestore;
   User? user;
-
   String? photoURL;
   String? email;
   bool isLoading = false;
-
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -40,7 +43,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (uid != null) {
       final docSnapshot =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
-
       if (docSnapshot.exists) {
         final data = docSnapshot.data();
         setState(() {
@@ -58,47 +60,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
 
-      setState(() {
-        isLoading = true;
-      });
+      setState(() => isLoading = true);
 
-      final bytes = await pickedFile.readAsBytes();
+      String secureUrl;
+      if (kIsWeb) {
+        // Web: Lấy bytes và tải lên Cloudinary
+        final bytes = await pickedFile.readAsBytes();
+        final response = await cloudinary.uploadFile(
+          CloudinaryFile.fromBytesData(
+            bytes,
+            identifier: 'avatar_${user!.uid}.jpg',
+            resourceType: CloudinaryResourceType.Image,
+          ),
+        );
+        secureUrl = response.secureUrl;
+      } else {
+        // Mobile: Tải file lên Cloudinary
+        final response = await cloudinary.uploadFile(
+          CloudinaryFile.fromFile(
+            pickedFile.path,
+            resourceType: CloudinaryResourceType.Image,
+          ),
+        );
+        secureUrl = response.secureUrl;
+      }
 
-      final fileName =
-          'avatars/${user!.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final storageRef = FirebaseStorage.instance.ref().child(fileName);
+      // Cập nhật photoURL trong Firebase Auth và Firestore
+      await user!.updatePhotoURL(secureUrl);
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .update({
+            'photoURL': secureUrl,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
 
-      print('Bắt đầu upload ảnh lên Storage...');
-      final uploadTask = await storageRef.putData(
-        bytes,
-        SettableMetadata(contentType: 'image/jpeg'),
-      );
-
-      print('Upload xong, lấy URL...');
-      final downloadUrl = await storageRef.getDownloadURL();
-
-      print('Update photoURL cho user...');
-      await user!.updatePhotoURL(downloadUrl);
       await user!.reload();
       user = _auth.currentUser;
 
       setState(() {
-        photoURL = downloadUrl;
+        photoURL = secureUrl;
         isLoading = false;
       });
 
-      print('Cập nhật ảnh đại diện thành công! URL: $downloadUrl');
+      print('Cập nhật ảnh đại diện thành công! URL: $secureUrl');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cập nhật ảnh đại diện thành công!')),
       );
-    } catch (e, stack) {
+    } catch (e) {
       print('Lỗi khi upload ảnh: $e');
-      print(stack);
-
-      setState(() {
-        isLoading = false;
-      });
-
+      setState(() => isLoading = false);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Lỗi khi upload ảnh: $e')));
@@ -111,7 +122,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final TextEditingController newPasswordController = TextEditingController();
     final TextEditingController confirmPasswordController =
         TextEditingController();
-
     bool isObscureCurrent = true;
     bool isObscureNew = true;
     bool isObscureConfirm = true;
@@ -232,9 +242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             height: 40,
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(
-                                  0xFF1565C0,
-                                ), // xanh đậm chuyên nghiệp
+                                backgroundColor: const Color(0xFF1565C0),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 36,
                                 ),
@@ -296,7 +304,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   await user!.reauthenticateWithCredential(
                                     cred,
                                   );
-
                                   await user!.updatePassword(newPass);
                                   Navigator.pop(context);
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -531,7 +538,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-
             const SizedBox(height: 30),
             if (isLoading) const Center(child: CircularProgressIndicator()),
           ],

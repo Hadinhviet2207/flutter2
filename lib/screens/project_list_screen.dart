@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/project_service.dart';
-import '../services/auth_service.dart';
+import '../widgets/join_project_form.dart';
 import 'project_detail_screen.dart';
-import 'archived_projects_screen.dart';
-import 'home_screen.dart';
+import 'create_project_screen.dart';
+import '../services/auth_service.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
 class ProjectListScreen extends StatefulWidget {
   final Project? parentProject;
@@ -23,7 +24,6 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   final _descriptionController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -34,190 +34,115 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     super.dispose();
   }
 
-  void _showAddProjectDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              widget.parentProject != null
-                  ? 'Thêm Project Con'
-                  : 'Thêm Project Mới',
-            ),
-            content: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: _titleController,
-                    decoration: const InputDecoration(labelText: 'Tiêu đề'),
-                    validator:
-                        (value) =>
-                            value?.isEmpty ?? true
-                                ? 'Vui lòng nhập tiêu đề'
-                                : null,
+  Widget _buildProjectCard(Project project) {
+    return Slidable(
+      key: ValueKey(project.id),
+      endActionPane: ActionPane(
+        motion: const ScrollMotion(),
+        children: [
+          SlidableAction(
+            onPressed: (_) => _showDeleteProjectDialog(project),
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            icon: Icons.delete,
+            label: 'Xóa',
+          ),
+        ],
+      ),
+      startActionPane: ActionPane(
+        motion: const ScrollMotion(),
+        children: [
+          SlidableAction(
+            onPressed: (_) => _togglePin(project),
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            icon: project.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+            label: project.isPinned ? 'Bỏ gim' : 'Gim',
+          ),
+          SlidableAction(
+            onPressed: (_) => _showEditProjectDialog(project),
+            backgroundColor: Colors.orange,
+            foregroundColor: Colors.white,
+            icon: Icons.edit,
+            label: 'Sửa',
+          ),
+        ],
+      ),
+      child: Card(
+        elevation: 2,
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: ListTile(
+          leading: Image.asset(
+            'assets/icon_des1.png',
+            width: 40,
+            height: 40,
+            fit: BoxFit.cover,
+          ),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  project.title,
+                  style: TextStyle(
+                    color: Colors.black87,
+                    fontWeight:
+                        project.isPinned ? FontWeight.bold : FontWeight.normal,
                   ),
-                  TextFormField(
-                    controller: _descriptionController,
-                    decoration: const InputDecoration(labelText: 'Mô tả'),
-                    validator:
-                        (value) =>
-                            value?.isEmpty ?? true
-                                ? 'Vui lòng nhập mô tả'
-                                : null,
+                ),
+              ),
+              if (project.isPinned)
+                const Icon(Icons.push_pin, color: Colors.blueAccent, size: 18),
+            ],
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    _getStatusIcon(project.status),
+                    size: 16,
+                    color: _getStatusColor(project.status),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _getStatusText(project.status),
+                    style: TextStyle(
+                      color: _getStatusColor(project.status),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Hủy'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  if (_formKey.currentState!.validate()) {
-                    final now = DateTime.now();
-                    final currentUser = _authService.currentUser;
-                    if (currentUser != null) {
-                      final project = Project(
-                        id: _projectService.generateNewId(),
-                        title: _titleController.text,
-                        description: _descriptionController.text,
-                        createdAt: now,
-                        updatedAt: now,
-                        ownerId: currentUser.uid,
-                        memberIds: [currentUser.uid],
-                        parentId: widget.parentProject?.id,
-                        startDate: now,
-                      );
-                      await _projectService.createProject(project);
-                      if (mounted) {
-                        Navigator.pop(context);
-                        _titleController.clear();
-                        _descriptionController.clear();
-                      }
-                    }
-                  }
-                },
-                child: const Text('Thêm'),
-              ),
+              if (project.dueDate != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_today,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Hết hạn: ${_formatDate(project.dueDate!)}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
-    );
-  }
-
-  Widget _buildProjectCard(Project project) {
-    return Card(
-      child: ListTile(
-        title: Row(
-          children: [
-            if (project.isGlobalPinned)
-              const Icon(Icons.push_pin, color: Colors.red, size: 16)
-            else if (project.isPinned)
-              const Icon(Icons.push_pin, color: Colors.blue, size: 16),
-            const SizedBox(width: 8),
-            Expanded(child: Text(project.title)),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(project.description),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(project.status),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _getStatusText(project.status),
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (project.dueDate != null)
-                  Text(
-                    'Hết hạn: ${_formatDate(project.dueDate!)}',
-                    style: TextStyle(
-                      color:
-                          project.dueDate!.isBefore(DateTime.now())
-                              ? Colors.red
-                              : Colors.grey,
-                      fontSize: 12,
-                    ),
-                  ),
-              ],
-            ),
-            if (project.parentId == null) ...[
-              const SizedBox(height: 4),
-              StreamBuilder<List<Project>>(
-                stream: _projectService.getChildProjects(project.id),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const SizedBox();
-                  final subProjects = snapshot.data!.length;
-                  return Text(
-                    '$subProjects project con',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  );
-                },
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ProjectDetailScreen(project: project),
               ),
-            ],
-          ],
+            );
+          },
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (project.parentId == null)
-              IconButton(
-                icon: const Icon(Icons.add),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder:
-                          (context) =>
-                              ProjectListScreen(parentProject: project),
-                    ),
-                  );
-                },
-              ),
-            IconButton(
-              icon: Icon(
-                project.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                color: project.isPinned ? Colors.blue : null,
-              ),
-              onPressed: () => _togglePin(project),
-            ),
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () => _showEditProjectDialog(project),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () => _showDeleteProjectDialog(project),
-            ),
-            IconButton(
-              icon: const Icon(Icons.archive),
-              onPressed: () => _archiveProject(project),
-            ),
-          ],
-        ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ProjectDetailScreen(project: project),
-            ),
-          );
-        },
       ),
     );
   }
@@ -272,11 +197,6 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  String _formatNullableDate(DateTime? date) {
-    if (date == null) return 'Chưa đặt';
-    return _formatDate(date);
-  }
-
   Future<void> _togglePin(Project project) async {
     try {
       final isOwner = project.ownerId == _authService.currentUser?.uid;
@@ -322,7 +242,6 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   void _showEditProjectDialog(Project project) {
     _titleController.text = project.title;
     _descriptionController.text = project.description;
-    ProjectStatus selectedStatus = project.status;
     DateTime? selectedDueDate = project.dueDate;
 
     showDialog(
@@ -330,128 +249,254 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
       builder:
           (context) => StatefulBuilder(
             builder:
-                (context, setState) => AlertDialog(
-                  title: const Text('Chỉnh Sửa Project'),
-                  content: SingleChildScrollView(
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          TextFormField(
-                            controller: _titleController,
-                            decoration: const InputDecoration(
-                              labelText: 'Tiêu đề',
+                (context, setState) => Dialog(
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  insetPadding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 24,
+                  ),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 480),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 28,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Chỉnh Sửa Project',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 28,
+                                color: Colors.black87,
+                              ),
                             ),
-                            validator:
-                                (value) =>
-                                    value?.isEmpty ?? true
-                                        ? 'Vui lòng nhập tiêu đề'
-                                        : null,
-                          ),
-                          TextFormField(
-                            controller: _descriptionController,
-                            decoration: const InputDecoration(
-                              labelText: 'Mô tả',
+                            const SizedBox(height: 28),
+                            // Tên project
+                            TextFormField(
+                              controller: _titleController,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'Tên project',
+                                labelText: 'Tên project',
+                                labelStyle: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black54,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 18,
+                                ),
+                              ),
+                              validator:
+                                  (value) =>
+                                      value?.isEmpty ?? true
+                                          ? 'Vui lòng nhập tên project'
+                                          : null,
                             ),
-                            validator:
-                                (value) =>
-                                    value?.isEmpty ?? true
-                                        ? 'Vui lòng nhập mô tả'
-                                        : null,
-                          ),
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<ProjectStatus>(
-                            value: selectedStatus,
-                            decoration: const InputDecoration(
-                              labelText: 'Trạng thái',
+                            const SizedBox(height: 16),
+                            // Mô tả
+                            TextFormField(
+                              controller: _descriptionController,
+                              maxLines: 3,
+                              style: const TextStyle(fontSize: 16),
+                              decoration: InputDecoration(
+                                hintText: 'Mô tả project',
+                                labelText: 'Mô tả project',
+                                labelStyle: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black54,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 18,
+                                ),
+                              ),
+                              validator:
+                                  (value) =>
+                                      value?.isEmpty ?? true
+                                          ? 'Vui lòng nhập mô tả'
+                                          : null,
                             ),
-                            items:
-                                ProjectStatus.values.map((status) {
-                                  return DropdownMenuItem(
-                                    value: status,
-                                    child: Text(_getStatusText(status)),
-                                  );
-                                }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => selectedStatus = value);
-                              }
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          ListTile(
-                            title: const Text('Ngày hết hạn'),
-                            subtitle: Text(
-                              _formatNullableDate(selectedDueDate),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (selectedDueDate != null)
-                                  IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      setState(() => selectedDueDate = null);
-                                    },
+                            const SizedBox(height: 16),
+                            // Ngày kết thúc
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: ListTile(
+                                title: const Text(
+                                  'Ngày kết thúc',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
                                   ),
-                                IconButton(
-                                  icon: const Icon(Icons.calendar_today),
-                                  onPressed: () async {
-                                    final date = await showDatePicker(
-                                      context: context,
-                                      initialDate:
-                                          selectedDueDate ?? DateTime.now(),
-                                      firstDate: DateTime.now(),
-                                      lastDate: DateTime.now().add(
-                                        const Duration(days: 365),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      selectedDueDate != null
+                                          ? "${selectedDueDate!.day.toString().padLeft(2, '0')}/"
+                                              "${selectedDueDate!.month.toString().padLeft(2, '0')}/"
+                                              "${selectedDueDate!.year}"
+                                          : "Chưa đặt",
+                                      style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontSize: 14,
                                       ),
-                                    );
-                                    if (date != null) {
-                                      setState(() => selectedDueDate = date);
-                                    }
+                                    ),
+                                    const SizedBox(width: 6),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.calendar_today_outlined,
+                                        color: Colors.grey,
+                                        size: 20,
+                                      ),
+                                      onPressed: () async {
+                                        final date = await showDatePicker(
+                                          context: context,
+                                          initialDate:
+                                              selectedDueDate ?? DateTime.now(),
+                                          firstDate: DateTime.now(),
+                                          lastDate: DateTime.now().add(
+                                            const Duration(days: 365),
+                                          ),
+                                          builder: (context, child) {
+                                            return Theme(
+                                              data: ThemeData.light().copyWith(
+                                                colorScheme:
+                                                    const ColorScheme.light(
+                                                      primary: Colors.blue,
+                                                    ),
+                                              ),
+                                              child: child!,
+                                            );
+                                          },
+                                        );
+                                        if (date != null) {
+                                          setState(
+                                            () => selectedDueDate = date,
+                                          );
+                                        }
+                                      },
+                                    ),
+                                    if (selectedDueDate != null)
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.clear,
+                                          color: Colors.grey,
+                                          size: 20,
+                                        ),
+                                        onPressed: () {
+                                          setState(
+                                            () => selectedDueDate = null,
+                                          );
+                                        },
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 36),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _titleController.clear();
+                                    _descriptionController.clear();
                                   },
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.grey[600],
+                                    textStyle: const TextStyle(fontSize: 18),
+                                  ),
+                                  child: const Text('Hủy'),
+                                ),
+                                const SizedBox(width: 20),
+                                SizedBox(
+                                  height: 40,
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF1565C0),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 36,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      elevation: 6,
+                                      shadowColor: Colors.blueAccent
+                                          .withOpacity(0.5),
+                                      textStyle: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                    onPressed: () async {
+                                      if (_formKey.currentState!.validate()) {
+                                        final updatedProject = project.copyWith(
+                                          title: _titleController.text,
+                                          description:
+                                              _descriptionController.text,
+                                          dueDate: selectedDueDate,
+                                          updatedAt: DateTime.now(),
+                                        );
+                                        await _projectService.updateProject(
+                                          project.id,
+                                          updatedProject,
+                                        );
+                                        if (mounted) {
+                                          Navigator.pop(context);
+                                          _titleController.clear();
+                                          _descriptionController.clear();
+                                        }
+                                      }
+                                    },
+                                    child: const Text(
+                                      'Lưu',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        shadows: [
+                                          Shadow(
+                                            offset: Offset(0, 1),
+                                            blurRadius: 3,
+                                            color: Colors.black26,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _titleController.clear();
-                        _descriptionController.clear();
-                      },
-                      child: const Text('Hủy'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () async {
-                        if (_formKey.currentState!.validate()) {
-                          final updatedProject = project.copyWith(
-                            title: _titleController.text,
-                            description: _descriptionController.text,
-                            status: selectedStatus,
-                            dueDate: selectedDueDate,
-                            updatedAt: DateTime.now(),
-                          );
-                          await _projectService.updateProject(
-                            project.id,
-                            updatedProject,
-                          );
-                          if (mounted) {
-                            Navigator.pop(context);
-                            _titleController.clear();
-                            _descriptionController.clear();
-                          }
-                        }
-                      },
-                      child: const Text('Lưu'),
-                    ),
-                  ],
                 ),
           ),
     );
@@ -486,130 +531,26 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     );
   }
 
-  Future<void> _archiveProject(Project project) async {
-    await _projectService.archiveProject(project.id);
-  }
-
-  void _showLinkAccountDialog(BuildContext context) {
-    final _confirmPasswordController = TextEditingController();
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Liên kết tài khoản'),
-            content: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: _emailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      hintText: 'Nhập email của bạn',
-                    ),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Vui lòng nhập email';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Email không hợp lệ';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Mật khẩu',
-                      hintText: 'Nhập mật khẩu của bạn',
-                    ),
-                    obscureText: true,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Vui lòng nhập mật khẩu';
-                      }
-                      if (value.length < 6) {
-                        return 'Mật khẩu phải có ít nhất 6 ký tự';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Xác nhận mật khẩu',
-                      hintText: 'Nhập lại mật khẩu',
-                    ),
-                    obscureText: true,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Vui lòng xác nhận mật khẩu';
-                      }
-                      if (value != _passwordController.text) {
-                        return 'Mật khẩu không khớp';
-                      }
-                      return null;
-                    },
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: _isLoading ? null : () => Navigator.pop(context),
-                child: const Text('Hủy'),
-              ),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _linkAccount,
-                child:
-                    _isLoading
-                        ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                        : const Text('Liên kết'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Future<void> _linkAccount() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
-
-      try {
-        await _authService.linkEmailPassword(
-          _emailController.text.trim(),
-          _passwordController.text,
-        );
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Liên kết tài khoản thành công!')),
-          );
-          Navigator.pop(context); // Đóng dialog
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Lỗi: ${e.toString()}')));
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      }
+  IconData _getStatusIcon(ProjectStatus status) {
+    switch (status) {
+      case ProjectStatus.notStarted:
+        return Icons.hourglass_empty;
+      case ProjectStatus.inProgress:
+        return Icons.play_circle_fill;
+      case ProjectStatus.onHold:
+        return Icons.pause_circle_filled;
+      case ProjectStatus.waitingReview:
+        return Icons.rate_review;
+      case ProjectStatus.revisionNeeded:
+        return Icons.edit;
+      case ProjectStatus.completed:
+        return Icons.check_circle;
+      case ProjectStatus.canceled:
+        return Icons.cancel;
+      case ProjectStatus.archived:
+        return Icons.archive;
+      case ProjectStatus.delayed:
+        return Icons.warning;
     }
   }
 
@@ -617,77 +558,128 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.parentProject != null
-              ? 'Project Con: ${widget.parentProject!.title}'
-              : 'Danh Sách Project',
+        title: Row(
+          children: [
+            Image.asset('assets/icon_des1.png', height: 24),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                "Quản lý công việc",
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
+        backgroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.archive),
+            icon: const Icon(Icons.add, color: Colors.black87),
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ArchivedProjectsScreen(),
+                  builder: (context) => const CreateProjectScreen(),
                 ),
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.link),
-            onPressed: () => _showLinkAccountDialog(context),
-            tooltip: 'Liên kết tài khoản',
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await AuthService().signOut();
-              if (mounted) {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const HomeScreen()),
-                );
-              }
-            },
-          ),
         ],
       ),
-      body: StreamBuilder<List<Project>>(
-        stream:
-            widget.parentProject != null
-                ? _projectService.getChildProjects(widget.parentProject!.id)
-                : _projectService.getRootProjects(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Lỗi: ${snapshot.error}'));
-          }
-
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final projects = snapshot.data!;
-
-          if (projects.isEmpty) {
-            return Center(
-              child: Text(
-                widget.parentProject != null
-                    ? 'Chưa có project con nào'
-                    : 'Chưa có project nào',
+      backgroundColor: Colors.white,
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(12),
               ),
-            );
-          }
+              child: const TextField(
+                style: TextStyle(color: Colors.black87),
+                decoration: InputDecoration(
+                  hintText: 'Tìm project...',
+                  hintStyle: TextStyle(color: Colors.grey),
+                  border: InputBorder.none,
+                  icon: Icon(Icons.search, color: Colors.grey),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'KHÔNG GIAN LÀM VIỆC CỦA BẠN',
+              style: TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.group, color: Colors.black54),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Không gian làm việc của bạn',
+                    style: TextStyle(color: Colors.black87),
+                  ),
+                ),
+                const Text('Project', style: TextStyle(color: Colors.blue)),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: Colors.blue,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const JoinProjectForm(),
+            Expanded(
+              child: StreamBuilder<List<Project>>(
+                stream:
+                    widget.parentProject != null
+                        ? _projectService.getChildProjects(
+                          widget.parentProject!.id,
+                        )
+                        : _projectService.getRootProjects(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Lỗi: ${snapshot.error}'));
+                  }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: projects.length,
-            itemBuilder: (context, index) => _buildProjectCard(projects[index]),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddProjectDialog,
-        child: const Icon(Icons.add),
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final projects = snapshot.data!;
+
+                  if (projects.isEmpty) {
+                    return Center(
+                      child: Text(
+                        widget.parentProject != null
+                            ? 'Chưa có project con nào'
+                            : 'Chưa có project nào',
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    itemCount: projects.length,
+                    itemBuilder:
+                        (context, index) => _buildProjectCard(projects[index]),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

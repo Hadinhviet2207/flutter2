@@ -1,8 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloudinary_public/cloudinary_public.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -13,43 +17,134 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController =
+      TextEditingController(); // Thêm controller cho email
+  final cloudinary = CloudinaryPublic('dua5bpeht', 'planera', cache: false);
 
   User? user;
-  File? _selectedImage;
+  File? _selectedImageFile; // Dùng cho mobile
+  Uint8List? _selectedImageBytes; // Dùng cho web
   bool isLoading = false;
+  String? _photoURL;
 
   @override
   void initState() {
     super.initState();
     user = _auth.currentUser;
-    _nameController.text = user?.displayName ?? '';
-    _phoneController.text = user?.phoneNumber ?? '';
+    _loadUserData();
   }
 
+  // Tải thông tin người dùng từ Firestore
+  Future<void> _loadUserData() async {
+    if (user != null) {
+      try {
+        DocumentSnapshot userDoc =
+            await _firestore.collection('users').doc(user!.uid).get();
+        if (userDoc.exists) {
+          Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _nameController.text =
+                data['displayName'] ?? user?.displayName ?? '';
+            _phoneController.text =
+                data['phoneNumber'] ?? user?.phoneNumber ?? '';
+            _emailController.text =
+                data['email'] ??
+                user?.email ??
+                'Không có email'; // Gán email vào controller
+            _photoURL = data['photoURL'] ?? user?.photoURL;
+          });
+        }
+      } catch (e) {
+        print('Lỗi tải thông tin người dùng: $e');
+        setState(() {
+          _emailController.text = 'Không có email'; // Fallback nếu lỗi
+        });
+      }
+    }
+  }
+
+  // Chọn ảnh từ thư viện
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
 
     if (picked != null) {
-      setState(() => _selectedImage = File(picked.path));
+      setState(() {
+        if (kIsWeb) {
+          // Web: Lấy bytes của ảnh
+          picked.readAsBytes().then((bytes) => _selectedImageBytes = bytes);
+          _selectedImageFile = null;
+        } else {
+          // Mobile: Lấy File
+          _selectedImageFile = File(picked.path);
+          _selectedImageBytes = null;
+        }
+      });
     }
   }
 
+  // Tải ảnh lên Cloudinary
+  Future<String?> _uploadImage() async {
+    if (user == null) return null;
+    try {
+      String secureUrl;
+      if (kIsWeb && _selectedImageBytes != null) {
+        // Web: Tải bytes lên Cloudinary
+        final response = await cloudinary.uploadFile(
+          CloudinaryFile.fromBytesData(
+            _selectedImageBytes!,
+            identifier: 'profile_${user!.uid}.jpg',
+            resourceType: CloudinaryResourceType.Image,
+          ),
+        );
+        secureUrl = response.secureUrl;
+      } else if (!kIsWeb && _selectedImageFile != null) {
+        // Mobile: Tải file lên Cloudinary
+        final response = await cloudinary.uploadFile(
+          CloudinaryFile.fromFile(
+            _selectedImageFile!.path,
+            resourceType: CloudinaryResourceType.Image,
+          ),
+        );
+        secureUrl = response.secureUrl;
+      } else {
+        return null;
+      }
+      return secureUrl;
+    } catch (e) {
+      print('Lỗi tải ảnh lên Cloudinary: $e');
+      return null;
+    }
+  }
+
+  // Lưu thay đổi
   Future<void> _saveChanges() async {
     setState(() => isLoading = true);
     try {
-      await user?.updateDisplayName(_nameController.text.trim());
+      final name = _nameController.text.trim();
+      final phone = _phoneController.text.trim();
+      final email = _emailController.text.trim();
 
-      // Cập nhật ảnh (placeholder - chưa upload lên Firebase Storage)
-      if (_selectedImage != null) {
-        await user?.updatePhotoURL(_selectedImage!.path);
+      // Cập nhật tên hiển thị trên Firebase Auth
+      await user?.updateDisplayName(name);
+
+      // Tải ảnh lên và lấy URL
+      String? newPhotoURL = await _uploadImage();
+      if (newPhotoURL != null) {
+        await user?.updatePhotoURL(newPhotoURL);
       }
 
-      // Firebase không cho phép đổi số điện thoại trực tiếp ở client
-      // Cần xác thực lại qua OTP nếu muốn update
-      // Đây là nơi bạn xử lý xác thực lại nếu app có flow xác thực phone
+      // Cập nhật thông tin trong Firestore
+      await _firestore.collection('users').doc(user!.uid).update({
+        'displayName': name,
+        'phoneNumber': phone,
+        'photoURL': newPhotoURL ?? _photoURL,
+        'email': email, // Cập nhật email từ controller
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       await user?.reload();
       user = _auth.currentUser;
@@ -70,19 +165,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildAvatar() {
-    final imageProvider =
-        _selectedImage != null
-            ? FileImage(_selectedImage!)
-            : (user?.photoURL != null && user!.photoURL!.startsWith("http")
-                ? NetworkImage(user!.photoURL!)
-                : null);
+    ImageProvider? imageProvider;
+    if (kIsWeb && _selectedImageBytes != null) {
+      // Web: Sử dụng MemoryImage cho bytes
+      imageProvider = MemoryImage(_selectedImageBytes!);
+    } else if (!kIsWeb && _selectedImageFile != null) {
+      // Mobile: Sử dụng FileImage
+      imageProvider = FileImage(_selectedImageFile!);
+    } else if (_photoURL != null && _photoURL!.startsWith("http")) {
+      // Ảnh từ URL (Firestore hoặc Firebase Auth)
+      imageProvider = NetworkImage(_photoURL!);
+    }
 
     return Stack(
       alignment: Alignment.bottomRight,
       children: [
         CircleAvatar(
           radius: 60,
-          backgroundImage: imageProvider as ImageProvider?,
+          backgroundImage: imageProvider,
           backgroundColor: Colors.grey.shade300,
           child:
               imageProvider == null
@@ -110,8 +210,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final email = user?.email ?? "Không có email";
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -135,7 +233,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       TextField(
                         controller: _nameController,
                         decoration: InputDecoration(
-                          labelText: "Họ và tên ",
+                          labelText: "Họ và tên",
                           prefixIcon: const Icon(Icons.person_outline),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
@@ -157,11 +255,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           filled: true,
                           fillColor: Colors.grey[100],
                         ),
-                        enabled: true, // không cho sửa vì cần xác thực OTP
                         style: GoogleFonts.inter(fontSize: 16),
                       ),
                       const SizedBox(height: 16),
                       TextField(
+                        controller: _emailController, // Sử dụng controller
                         enabled: false,
                         decoration: InputDecoration(
                           labelText: "Email",
@@ -171,7 +269,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           ),
                           filled: true,
                           fillColor: Colors.grey[100],
-                          hintText: email,
                         ),
                         style: GoogleFonts.inter(fontSize: 16),
                       ),

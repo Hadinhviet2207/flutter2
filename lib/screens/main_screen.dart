@@ -1,6 +1,5 @@
-import 'package:final_project_flutter_advanced_nhom_4/screens/ProfileScreen%20.dart';
-import 'package:final_project_flutter_advanced_nhom_4/screens/btl_home.dart';
-import 'package:final_project_flutter_advanced_nhom_4/screens/notification_screen.dart';
+import 'package:final_project_flutter_advanced_nhom_4/screens/profile_screen.dart';
+import 'package:final_project_flutter_advanced_nhom_4/screens/project_list_screen.dart';
 import 'package:flutter/material.dart';
 
 class MainScreen extends StatefulWidget {
@@ -13,11 +12,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int currentIndex = 0;
 
-  final List<Widget> screens = const [
-    HomeScreen(),
-    NotificationScreen(),
-    ProfileScreen(),
-  ];
+  final List<Widget> screens = const [ProjectListScreen(), ProfileScreen()];
 
   @override
   Widget build(BuildContext context) {
@@ -31,11 +26,7 @@ class _MainScreenState extends State<MainScreen> {
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.view_column), label: 'Bảng'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications_none),
-            label: 'Thông báo',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Trang chủ'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Tài khoản'),
         ],
       ),
